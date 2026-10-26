@@ -1,0 +1,32 @@
+# 最小配置：修改 host、username、password 和 mounts 下的 path 即可。
+# 默认位置：~/.remote-fs-mcp/config.yaml；也可通过 --config 指定。
+# 真实配置保存在仓库外并限制访问权限，不要提交到 Git。修改后重启 MCP 生效。
+version: 1
+servers:
+  # 工具调用使用的 serverId，不是主机名，可自行命名。
+  - id: reports-host
+    connection:
+      # SSH 主机名或 IP；省略 port 时为 22。
+      host: 192.0.2.10
+      username: deploy
+      auth:
+        type: password
+        # 这里是占位符。填写 SSH 密码并保留引号；环境变量只是可选方式。
+        password: "REPLACE_WITH_SSH_PASSWORD"
+      # 默认校验本机 ~/.ssh/known_hosts；请事先独立核验并登记主机密钥。
+      # 未知或变化的密钥会拒绝连接，不会自动信任。
+    mounts:
+      # mountId 只需在所属服务器内唯一。一个服务器可以配置多个目录。
+      - id: reports
+        # 授权远端目录，使用 POSIX 绝对路径；/root 等目录允许，只有 / 不能直接挂载。
+        # 操作覆盖此目录内的全部子目录和普通文件，不允许穿越或跟随符号链接。
+        path: /srv/reports
+        # 省略 permissions 时为 [read]，包含列目录、属性、读取、tail、搜索和归档读取。
+        # 修改文件、重命名、移动、建目录或解压写入：permissions: [read, write]
+        # 还要允许删除文件/目录：permissions: [read, write, delete]
+        # write 不隐含 delete；默认示例不启用修改和删除。
+
+# 默认：read_file 每次返回 1 MiB，可请求到 4 MiB；大文件使用 nextOffset 分段读取。
+# 搜索有独立的 256 MiB 总扫描预算，不再把单文件扫描限制为读取响应的 4 MiB。
+# 归档支持 gzip、tar、tar.gz/tgz、zip；read_archive 无须先在服务器上解压。
+# 可调资源预算及多目录示例见 config.advanced.yaml。1 MiB = 1048576 字节。

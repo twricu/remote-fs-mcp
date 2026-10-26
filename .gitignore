@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+.env
+.env.*
+!.env.example
+config.yaml
+!examples/config.yaml
+*.log
+*.tgz
+.DS_Store
+test-artifacts/

@@ -1,0 +1,86 @@
+# 多服务器、多目录、认证和资源预算示例；所有地址和凭据均需自行替换。
+# 本地路径支持 ~/；其他相对路径以本 YAML 所在目录为基准。
+# 远端路径使用 POSIX 规则。真实配置不要提交到 Git，修改后重启 MCP。
+version: 1
+servers:
+  - id: logs-host
+    connection:
+      host: 192.0.2.20
+      port: 22 # 可省略，默认 22。
+      username: deploy
+      auth:
+        type: private-key
+        privateKeyPath: ~/.ssh/id_ed25519
+        # 加密私钥：增加 passphrase: "REPLACE_WITH_PASSPHRASE"
+        # 或 passphraseEnv: LOGS_SSH_KEY_PASSPHRASE，二者互斥。
+      knownHostsFile: ~/.ssh/known_hosts # 可省略；必须先核验并登记主机密钥。
+    mounts:
+      - id: logs
+        path: /srv/app/logs
+        permissions: [read]
+        # read 包含全部只读工具；需要修改时改为 [read, write]。
+        # write 包含创建、覆盖/追加、重命名/移动、建目录和解压目标写入。
+        # 允许删除必须另外加入 delete：[read, write, delete]。
+      - id: releases
+        path: /srv/app/releases
+        permissions: [read]
+        # 每个挂载独立授权；同一服务器可以配置多个目录。
+        # 跨挂载移动要求源和目标都有 write，解压要求源 read、目标 write。
+        # 默认示例仍只读，不会自动获得 write 或 delete。
+  - id: reports-host
+    connection:
+      host: 192.0.2.10
+      username: deploy
+      auth:
+        type: password
+        # 变量由启动 MCP 的进程提供，必须非空，不会自动加载 .env。
+        # 也可改为 password: "REPLACE_WITH_SSH_PASSWORD"，不能同时配置两者。
+        passwordEnv: REPORTS_SSH_PASSWORD
+    mounts:
+      - id: reports
+        path: /srv/reports # 也可授权 /root 等目录；只禁止直接挂载 /。
+        permissions: [read]
+
+# 另外支持 agent（SSH_AUTH_SOCK）和 auto（有限 SSH 配置兼容）。
+# 切换 auth.type 时删除原方式专用字段，详见 docs/usage/configuration.md。
+
+# 以下是内置默认值，整段 security 可以省略；对全部服务器生效。
+# 数值使用整数字节/毫秒，不接受 "4MiB"、"60s" 字符串。
+security:
+  followSymlinks: false # 固定为 false，任意路径段的链接均拒绝。
+  # read_file 可请求的返回上限及 tail 读取预算；默认请求仍为 1 MiB。
+  # 不限制文件总大小，也不限制 search_files 的单文件扫描量。接受 1–16 MiB。
+  maxReadBytes: 4194304
+  # 单次 write_file 解码后的正文上限，默认 16 MiB；接受 1–1 GiB。
+  # 解压另受 maxExtractBytes 限制，不受此正文参数限制。
+  maxWriteBytes: 16777216
+  # 单次搜索最多返回 1000 条匹配，工具默认请求 100 条；接受 1–10000。
+  maxSearchResults: 1000
+  # 搜索总预算默认 256 MiB，接受 1–8 GiB。
+  # 普通日志按读取量计；包含归档时还计入展开量，防止压缩数据绕过扫描预算。
+  maxScanBytes: 268435456
+  # 默认最多搜索 16 层子目录；0 只搜索直接子文件。接受 0–256。
+  maxSearchDepth: 16
+  # 每个目录的检查预算与列表 limit 上限，默认 10000；接受 1–1000000。
+  # list_directory 默认返回 200 项，可用 nextOffset 分页继续。
+  maxDirectoryEntries: 10000
+  # 单次搜索、递归修改或归档处理最多检查 100000 个条目。
+  # 空文件、被跳过的对象和归档条目也受预算约束；接受 1–10000000。
+  maxOperationEntries: 100000
+  # 单个归档输入最多 128 MiB，接受 1–1 GiB。
+  maxArchiveBytes: 134217728
+  # 单次归档处理最多展开 256 MiB，接受 1–2 GiB，防止解压炸弹。
+  # ZIP 目录浏览不展开正文；读取指定 ZIP 成员不会展开其他成员。
+  maxExtractBytes: 268435456
+  # 搜索的单行缓冲默认 1 MiB，适用于较长的 JSON 日志；接受 1–16 MiB。
+  maxLineBytes: 1048576
+  # 建连最多等待 10 秒，接受 1000–300000；不能大于操作超时。
+  connectionTimeoutMs: 10000
+  # 单次调用最多 60 秒，包括排队、建连、路径检查和 I/O；接受 1000–3600000。
+  operationTimeoutMs: 60000
+  # 全部服务器合计同时进行 4 个操作，接受 1–64；另外最多排队 64 个。
+  maxConcurrentOperations: 4
+
+# 读/搜索达到预算会截断或报错，请检查 meta.truncated、reasons 和跳过计数。
+# 修改失败且 meta.mayHaveChanged=true 时，先检查结果，不要直接重试。
+# 不提供任意 Shell 命令，也不因启用 write/delete 而扩大配置中的目录范围。
